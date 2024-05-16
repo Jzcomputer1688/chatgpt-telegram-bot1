@@ -8,28 +8,28 @@ from openai_helper import OpenAIHelper, default_max_tokens, are_functions_availa
 from telegram_bot import ChatGPTTelegramBot
 
 
-def main():
-    # Read .env file
-    load_dotenv()
-
-    # Setup logging
+def setup_logging():
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    # Check if the required environment variables are set
+
+def load_environment_variables():
+    load_dotenv()
     required_values = ['TELEGRAM_BOT_TOKEN', 'OPENAI_API_KEY']
     missing_values = [value for value in required_values if os.environ.get(value) is None]
-    if len(missing_values) > 0:
+    if missing_values:
         logging.error(f'The following environment values are missing in your .env: {", ".join(missing_values)}')
         exit(1)
 
-    # Setup configurations
+
+def get_openai_config():
     model = os.environ.get('OPENAI_MODEL', 'gpt-4')
     functions_available = are_functions_available(model=model)
     max_tokens_default = default_max_tokens(model=model)
+
     openai_config = {
         'api_key': os.environ['OPENAI_API_KEY'],
         'show_usage': os.environ.get('SHOW_USAGE', 'false').lower() == 'true',
@@ -64,8 +64,9 @@ def main():
 
     if openai_config['enable_functions'] and not functions_available:
         logging.error(f'ENABLE_FUNCTIONS is set to true, but the model {model} does not support it. '
-                        'Please set ENABLE_FUNCTIONS to false or use a model that supports it.')
+                      'Please set ENABLE_FUNCTIONS to false or use a model that supports it.')
         exit(1)
+
     if os.environ.get('MONTHLY_USER_BUDGETS') is not None:
         logging.warning('The environment variable MONTHLY_USER_BUDGETS is deprecated. '
                         'Please use USER_BUDGETS with BUDGET_PERIOD instead.')
@@ -73,6 +74,10 @@ def main():
         logging.warning('The environment variable MONTHLY_GUEST_BUDGET is deprecated. '
                         'Please use GUEST_BUDGET with BUDGET_PERIOD instead.')
 
+    return openai_config
+
+
+def get_telegram_config():
     telegram_config = {
         'token': os.environ['TELEGRAM_BOT_TOKEN'],
         'admin_user_ids': os.environ.get('ADMIN_USER_IDS', '-'),
@@ -102,15 +107,30 @@ def main():
         'bot_language': os.environ.get('BOT_LANGUAGE', 'en'),
     }
 
-    plugin_config = {
+    return telegram_config
+
+
+def get_plugin_config():
+    return {
         'plugins': os.environ.get('PLUGINS', '').split(',')
     }
 
-    # Setup and run ChatGPT and Telegram bot
+
+def initialize_and_run_bot():
+    plugin_config = get_plugin_config()
+    openai_config = get_openai_config()
+    telegram_config = get_telegram_config()
+
     plugin_manager = PluginManager(config=plugin_config)
     openai_helper = OpenAIHelper(config=openai_config, plugin_manager=plugin_manager)
     telegram_bot = ChatGPTTelegramBot(config=telegram_config, openai=openai_helper)
     telegram_bot.run()
+
+
+def main():
+    setup_logging()
+    load_environment_variables()
+    initialize_and_run_bot()
 
 
 if __name__ == '__main__':
